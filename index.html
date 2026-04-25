@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EVote Bridge — Booth Verification System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">
+      <span class="logo-icon">⬡</span>
+      <span class="logo-text">EVote<strong>Bridge</strong></span>
+    </div>
+    <div class="header-meta">
+      <span class="badge">Module 2 — Prototype</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Step indicator -->
+    <div class="steps">
+      <div class="step active" id="step-dot-1"><span>01</span> Setup</div>
+      <div class="step-line"></div>
+      <div class="step" id="step-dot-2"><span>02</span> Capture</div>
+      <div class="step-line"></div>
+      <div class="step" id="step-dot-3"><span>03</span> Verify & Send</div>
+      <div class="step-line"></div>
+      <div class="step" id="step-dot-4"><span>04</span> Confirmed</div>
+    </div>
+
+    <!-- STEP 1: Setup -->
+    <section class="card" id="section-1">
+      <div class="card-tag">Step 01</div>
+      <h2>Booth Configuration</h2>
+      <p class="subtitle">Configure this booth before starting voter verification.</p>
+
+      <div class="form-group">
+        <label>This Booth ID</label>
+        <input type="text" id="booth-id" placeholder="e.g. TN-CBE-042" maxlength="20" />
+      </div>
+      <div class="form-group">
+        <label>Officer Name</label>
+        <input type="text" id="officer-name" placeholder="e.g. Rajan Kumar" />
+      </div>
+      <div class="form-group">
+        <label>Telegram Bot Token <span class="hint">(from @BotFather)</span></label>
+        <input type="password" id="bot-token" placeholder="1234567890:ABCdef..." />
+      </div>
+      <div class="form-group">
+        <label>Telegram Chat ID <span class="hint">(target group/channel)</span></label>
+        <input type="text" id="chat-id" placeholder="-100xxxxxxxxxx or @yourchannel" />
+      </div>
+
+      <button class="btn-primary" onclick="goToStep2()">Begin Verification Session →</button>
+    </section>
+
+    <!-- STEP 2: Voter Info + Capture -->
+    <section class="card hidden" id="section-2">
+      <div class="card-tag">Step 02</div>
+      <h2>Voter Details</h2>
+      <p class="subtitle">Enter voter information and capture their Voter ID card.</p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Voter's Home Booth ID</label>
+          <input type="text" id="voter-home-booth" placeholder="e.g. TN-CHN-007" />
+        </div>
+        <div class="form-group">
+          <label>Voter ID Number</label>
+          <input type="text" id="voter-id-number" placeholder="e.g. ABC1234567" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Voter Name</label>
+        <input type="text" id="voter-name" placeholder="Full name as on ID" />
+      </div>
+
+      <!-- Camera / Upload Toggle -->
+      <div class="capture-area">
+        <div class="capture-tabs">
+          <button class="tab-btn active" onclick="switchTab('camera')">📷 Camera</button>
+          <button class="tab-btn" onclick="switchTab('upload')">📁 Upload</button>
+        </div>
+
+        <!-- Camera Panel -->
+        <div id="camera-panel">
+          <div class="video-wrap">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+            <div class="video-overlay" id="video-overlay">
+              <div class="scan-line"></div>
+              <p>Camera preview will appear here</p>
+            </div>
+          </div>
+          <div class="camera-controls">
+            <button class="btn-secondary" onclick="startCamera()">▶ Start Camera</button>
+            <button class="btn-capture" onclick="capturePhoto()" id="capture-btn" disabled>⬤ Capture</button>
+            <button class="btn-secondary" onclick="stopCamera()">■ Stop</button>
+          </div>
+        </div>
+
+        <!-- Upload Panel -->
+        <div id="upload-panel" class="hidden">
+          <label class="upload-zone" for="file-input">
+            <div class="upload-icon">⬆</div>
+            <p>Click or drag Voter ID image here</p>
+            <span>.JPG, .PNG, .WEBP supported</span>
+          </label>
+          <input type="file" id="file-input" accept="image/*" onchange="handleFileUpload(event)" style="display:none;" />
+        </div>
+
+        <!-- Preview -->
+        <div id="preview-area" class="hidden">
+          <p class="preview-label">Captured Image Preview</p>
+          <img id="preview-img" src="" alt="Voter ID Preview" />
+          <button class="btn-link" onclick="retakePhoto()">↩ Retake / Change</button>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-ghost" onclick="goToStep1()">← Back</button>
+        <button class="btn-primary" onclick="goToStep3()">Review & Send →</button>
+      </div>
+    </section>
+
+    <!-- STEP 3: Review + Send -->
+    <section class="card hidden" id="section-3">
+      <div class="card-tag">Step 03</div>
+      <h2>Review & Dispatch</h2>
+      <p class="subtitle">Confirm all details before sending notification to home booth.</p>
+
+      <div class="review-grid" id="review-grid">
+        <!-- Populated by JS -->
+      </div>
+
+      <div class="alert-box" id="message-preview">
+        <!-- Message preview populated by JS -->
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-ghost" onclick="goToStep2()">← Edit Details</button>
+        <button class="btn-primary" id="send-btn" onclick="sendNotification()">
+          <span id="send-label">📡 Send Notification</span>
+        </button>
+      </div>
+      <p id="send-error" class="error-msg hidden"></p>
+    </section>
+
+    <!-- STEP 4: Success -->
+    <section class="card hidden" id="section-4">
+      <div class="card-tag">Step 04</div>
+      <div class="success-screen">
+        <div class="success-icon">✓</div>
+        <h2>Notification Sent!</h2>
+        <p class="subtitle">The home booth has been alerted. This voter is marked as voted.</p>
+
+        <div class="sent-summary" id="sent-summary">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="btn-row center">
+          <button class="btn-primary" onclick="nextVoter()">Next Voter →</button>
+          <button class="btn-ghost" onclick="goToStep1()">Change Booth Setup</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>EVoteBridge · Design Thinking Prototype · Module 2 · <span id="date-footer"></span></p>
+    <p class="footer-note">Built for election accessibility — enabling cross-district voting verification</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
