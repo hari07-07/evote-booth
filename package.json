@@ -1,0 +1,15 @@
+{
+  "name": "evote-bridge-v2",
+  "version": "2.0.0",
+  "description": "EVote Bridge - Secure Cross-Booth Voter Verification System",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Static site - no build needed'"
+  },
+  "dependencies": {
+    "resend": "^3.2.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.3"
+  }
+}
