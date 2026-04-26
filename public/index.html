@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EVote Bridge — Booth Verification</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/tesseract.js@4/dist/tesseract.min.js"></script>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="screen-login" class="screen active">
+  <div class="login-wrap">
+    <div class="brand">
+      <div class="brand-icon">&#9653;</div>
+      <h1>EVote<span>Bridge</span></h1>
+      <p>Secure Cross-Booth Voter Verification</p>
+    </div>
+
+    <div class="login-card">
+
+      <!-- Step 1: Credentials -->
+      <div id="ls1" class="lstep">
+        <h2>Officer Login</h2>
+        <p class="hint">Enter your credentials</p>
+        <div class="fg">
+          <label>Username</label>
+          <input id="un" type="text" placeholder="admin" autocomplete="off"/>
+        </div>
+        <div class="fg">
+          <label>Password</label>
+          <input id="pw" type="password" placeholder="admin123"/>
+        </div>
+        <button class="btn-p w100" onclick="doLogin()">Send OTP &rarr;</button>
+        <p id="login-err" class="err hidden">Invalid credentials</p>
+      </div>
+
+      <!-- Step 2: OTP -->
+      <div id="ls2" class="lstep hidden">
+        <div class="otp-icon">&#128241;</div>
+        <h2>Enter OTP</h2>
+        <p class="hint">A 6-digit code was sent to your registered phone via SMS</p>
+        <div class="otp-box">
+          <input id="otp-in" type="text" placeholder="000000" maxlength="6" inputmode="numeric"/>
+        </div>
+        <div class="timer-row">
+          <div class="tbar"><div id="tbar-fill"></div></div>
+          <span id="tbar-txt">30s</span>
+        </div>
+        <button class="btn-p w100" onclick="doVerify()">Verify &amp; Login &rarr;</button>
+        <p id="otp-err" class="err hidden">Invalid OTP. Try again.</p>
+        <button class="btn-lnk" onclick="resendOTP()">Resend OTP</button>
+        <button class="btn-lnk" onclick="backToLogin()">&#8592; Back</button>
+      </div>
+
+    </div>
+    <p class="foot-note">EVote Bridge &middot; Module 2 &middot; Design Thinking &middot; NEC</p>
+  </div>
+</div>
+
+<!-- ══ APP SCREEN ══ -->
+<div id="screen-app" class="screen hidden">
+
+  <header class="hdr">
+    <div class="hdr-logo">&#9653; EVote<strong>Bridge</strong></div>
+    <div class="hdr-right">
+      <span class="booth-tag" id="hdr-booth">Booth: —</span>
+      <span class="hdr-clock" id="hdr-clock">--:--:--</span>
+      <button class="btn-out" onclick="doLogout()">Logout</button>
+    </div>
+  </header>
+
+  <main class="app-body">
+
+    <!-- Step bar -->
+    <div class="stepbar">
+      <div class="si active" id="si1"><span class="sn">01</span><span class="sl">Setup</span></div>
+      <div class="sdiv"></div>
+      <div class="si" id="si2"><span class="sn">02</span><span class="sl">Capture</span></div>
+      <div class="sdiv"></div>
+      <div class="si" id="si3"><span class="sn">03</span><span class="sl">Scan</span></div>
+      <div class="sdiv"></div>
+      <div class="si" id="si4"><span class="sn">04</span><span class="sl">Confirm</span></div>
+    </div>
+
+    <!-- Panel 1: Booth Setup -->
+    <div id="p1" class="panel active">
+      <div class="ptag">Step 01</div>
+      <h2>Booth Setup</h2>
+      <p class="psub">Configure your booth before starting verification.</p>
+      <div class="frow">
+        <div class="fg"><label>Booth ID</label><input id="booth-id" type="text" placeholder="TN-CBE-042"/></div>
+        <div class="fg"><label>Officer Name</label><input id="officer-name" type="text" placeholder="Your full name"/></div>
+      </div>
+      <button class="btn-p" onclick="startBooth()">Start Session &rarr;</button>
+    </div>
+
+    <!-- Panel 2: Capture -->
+    <div id="p2" class="panel hidden">
+      <div class="ptag">Step 02</div>
+      <h2>Capture Voter ID</h2>
+      <p class="psub">Use camera or upload the voter's ID card image.</p>
+
+      <div class="tabs">
+        <button class="tab active" id="tab-cam-btn" onclick="switchTab(event,'cam')">&#128247; Camera</button>
+        <button class="tab" id="tab-upl-btn" onclick="switchTab(event,'upl')">&#128193; Upload</button>
+      </div>
+
+      <!-- Camera -->
+      <div id="tab-cam">
+        <div class="vbox">
+          <video id="vid" autoplay playsinline muted></video>
+          <div class="vover" id="vover">
+            <div class="scan-sq"></div>
+            <p>Tap Start to activate camera</p>
+          </div>
+        </div>
+        <div class="cam-btns">
+          <button class="btn-s" onclick="startCam()">&#9654; Start</button>
+          <button class="btn-cap" id="cap-btn" onclick="captureFrame()" disabled>&#11044; Capture</button>
+          <button class="btn-s" onclick="stopCam()">&#9632; Stop</button>
+        </div>
+      </div>
+
+      <!-- Upload -->
+      <div id="tab-upl" class="hidden">
+        <label class="uzone" for="file-in">
+          <div class="uicon">&#11014;</div>
+          <p>Tap to upload Voter ID image</p>
+          <span>JPG, PNG, WEBP</span>
+        </label>
+        <input id="file-in" type="file" accept="image/*" capture="environment" onchange="handleFile(event)" style="display:none"/>
+      </div>
+
+      <!-- Preview -->
+      <div id="prev-wrap" class="hidden">
+        <p class="prev-lbl">&#10003; Image Captured</p>
+        <img id="prev-img" src="" alt="Voter ID"/>
+        <button class="btn-lnk" onclick="retake()">&#8617; Retake</button>
+      </div>
+
+      <div class="brow">
+        <button class="btn-g" onclick="goP(1)">&#8592; Back</button>
+        <button class="btn-p" onclick="goScan()">Scan ID &rarr;</button>
+      </div>
+    </div>
+
+    <!-- Panel 3: Scan & Review -->
+    <div id="p3" class="panel hidden">
+      <div class="ptag">Step 03</div>
+      <h2>Scan &amp; Review</h2>
+      <p class="psub">OCR is reading the ID. Verify and correct the details below.</p>
+
+      <div id="scan-status" class="scanning">
+        <div class="spinner"></div>
+        <p id="scan-msg">Initializing scanner...</p>
+      </div>
+
+      <div id="review-form" class="hidden">
+        <div class="frow">
+          <div class="fg">
+            <label>Voter Name <span class="atag">Auto-scanned</span></label>
+            <input id="rv-name" type="text" placeholder="Full name"/>
+          </div>
+          <div class="fg">
+            <label>Voter ID No. <span class="atag">Auto-scanned</span></label>
+            <input id="rv-id" type="text" placeholder="e.g. ABC1234567"/>
+          </div>
+        </div>
+        <div class="fg">
+          <label>Home Booth ID <span class="mtag">Enter manually</span></label>
+          <input id="rv-booth" type="text" placeholder="e.g. TN-CHN-007"/>
+        </div>
+        <button class="btn-lnk" onclick="toggleRaw()">&#9660; View raw scanned text</button>
+        <pre id="raw-txt" class="hidden"></pre>
+      </div>
+
+      <div class="brow">
+        <button class="btn-g" onclick="goP(2)">&#8592; Back</button>
+        <button class="btn-p" id="rev-btn" onclick="goConfirm()" disabled>Confirm &rarr;</button>
+      </div>
+    </div>
+
+    <!-- Panel 4: Confirm & Send -->
+    <div id="p4" class="panel hidden">
+      <div class="ptag">Step 04</div>
+      <h2>Confirm &amp; Send</h2>
+      <p class="psub">Review all details before sending notification to home booth.</p>
+
+      <div id="cgrid" class="cgrid"></div>
+
+      <div class="email-note">
+        &#128231; Notification will be sent to: <strong id="email-dest"></strong>
+      </div>
+
+      <div class="brow">
+        <button class="btn-g" onclick="goP(3)">&#8592; Edit</button>
+        <button class="btn-p" id="send-btn" onclick="doSend()">
+          <span id="send-lbl">&#128225; Send &amp; Save</span>
+        </button>
+      </div>
+      <p id="send-err" class="err hidden"></p>
+    </div>
+
+    <!-- Panel 5: Success -->
+    <div id="p5" class="panel hidden">
+      <div class="success-box">
+        <div class="tick">&#10003;</div>
+        <h2>Voter Verified!</h2>
+        <p class="psub">Email sent &amp; record saved in database successfully.</p>
+        <div id="sum-box" class="sum-box"></div>
+        <div class="brow center">
+          <button class="btn-p" onclick="nextVoter()">Next Voter &rarr;</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<canvas id="cv" style="display:none"></canvas>
+<script src="app.js"></script>
+</body>
+</html>
