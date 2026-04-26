@@ -4,7 +4,8 @@
   "description": "EVote Bridge - Secure Cross-Booth Voter Verification System",
   "scripts": {
     "dev": "vercel dev",
-    "build": "echo 'Static site - no build needed'"
+    "build": "echo 'Static site - no build needed'",
+    "test": "echo 'No tests currently written' && exit 0"
   },
   "dependencies": {
     "resend": "^3.2.0",
