@@ -3,184 +3,257 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EVote Bridge — Booth Verification System</title>
+  <title>EVote Bridge v2 — Secure Booth Verification</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <script src='https://unpkg.com/tesseract.js@4/dist/tesseract.min.js'></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- Header -->
-  <header class="header">
-    <div class="logo">
-      <span class="logo-icon">⬡</span>
-      <span class="logo-text">EVote<strong>Bridge</strong></span>
-    </div>
-    <div class="header-meta">
-      <span class="badge">Module 2 — Prototype</span>
-      <span class="clock" id="clock">--:--:--</span>
-    </div>
-  </header>
-
-  <!-- Main -->
-  <main class="main">
-
-    <!-- Step indicator -->
-    <div class="steps">
-      <div class="step active" id="step-dot-1"><span>01</span> Setup</div>
-      <div class="step-line"></div>
-      <div class="step" id="step-dot-2"><span>02</span> Capture</div>
-      <div class="step-line"></div>
-      <div class="step" id="step-dot-3"><span>03</span> Verify & Send</div>
-      <div class="step-line"></div>
-      <div class="step" id="step-dot-4"><span>04</span> Confirmed</div>
-    </div>
-
-    <!-- STEP 1: Setup -->
-    <section class="card" id="section-1">
-      <div class="card-tag">Step 01</div>
-      <h2>Booth Configuration</h2>
-      <p class="subtitle">Configure this booth before starting voter verification.</p>
-
-      <div class="form-group">
-        <label>This Booth ID</label>
-        <input type="text" id="booth-id" placeholder="e.g. TN-CBE-042" maxlength="20" />
-      </div>
-      <div class="form-group">
-        <label>Officer Name</label>
-        <input type="text" id="officer-name" placeholder="e.g. Rajan Kumar" />
-      </div>
-      <div class="form-group">
-        <label>Telegram Bot Token <span class="hint">(from @BotFather)</span></label>
-        <input type="password" id="bot-token" placeholder="1234567890:ABCdef..." />
-      </div>
-      <div class="form-group">
-        <label>Telegram Chat ID <span class="hint">(target group/channel)</span></label>
-        <input type="text" id="chat-id" placeholder="-100xxxxxxxxxx or @yourchannel" />
+  <!-- SCREEN 1: LOGIN -->
+  <div class="screen active" id="screen-login">
+    <div class="login-wrap">
+      <div class="login-brand">
+        <div class="brand-hex">&#x2B21;</div>
+        <h1>EVote<span>Bridge</span></h1>
+        <p>Secure Cross-Booth Verification System</p>
       </div>
 
-      <button class="btn-primary" onclick="goToStep2()">Begin Verification Session →</button>
-    </section>
+      <div class="login-card">
 
-    <!-- STEP 2: Voter Info + Capture -->
-    <section class="card hidden" id="section-2">
-      <div class="card-tag">Step 02</div>
-      <h2>Voter Details</h2>
-      <p class="subtitle">Enter voter information and capture their Voter ID card.</p>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label>Voter's Home Booth ID</label>
-          <input type="text" id="voter-home-booth" placeholder="e.g. TN-CHN-007" />
+        <!-- STEP 1: Username + Password -->
+        <div class="login-step" id="login-step-1">
+          <h2>Officer Login</h2>
+          <p class="step-hint">Enter your credentials to continue</p>
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="username" placeholder="admin" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="password" placeholder="admin123" />
+          </div>
+          <button class="btn-primary full" onclick="handleLogin()">Continue &rarr;</button>
+          <p class="login-error hidden" id="login-error">Invalid username or password</p>
         </div>
-        <div class="form-group">
-          <label>Voter ID Number</label>
-          <input type="text" id="voter-id-number" placeholder="e.g. ABC1234567" />
+
+        <!-- STEP 2A: QR Code Setup -->
+        <div class="login-step hidden" id="login-step-2a">
+          <h2>Setup Authenticator</h2>
+          <p class="step-hint">Scan this QR code with Google Authenticator or Microsoft Authenticator</p>
+          <div class="qr-wrap">
+            <div class="qr-loading" id="qr-loading">
+              <div class="scan-spinner"></div>
+              <p>Generating QR code...</p>
+            </div>
+            <img id="qr-img" src="" alt="QR Code" class="hidden" />
+          </div>
+          <div class="secret-wrap hidden" id="secret-wrap">
+            <p class="secret-label">Manual entry code:</p>
+            <code id="totp-secret-display"></code>
+          </div>
+          <div class="qr-steps">
+            <p>1. Open <strong>Google</strong> or <strong>Microsoft Authenticator</strong></p>
+            <p>2. Tap <strong>+</strong> &rarr; <strong>Scan QR code</strong></p>
+            <p>3. Scan the code above</p>
+            <p>4. Click the button below</p>
+          </div>
+          <button class="btn-primary full" onclick="goToVerify()">I've scanned it &rarr;</button>
+          <button class="btn-link" onclick="toggleSecret()">Can't scan? Show manual code</button>
+          <button class="btn-link" onclick="backToLogin()">&#8592; Back</button>
+        </div>
+
+        <!-- STEP 2B: Enter TOTP Code -->
+        <div class="login-step hidden" id="login-step-2">
+          <div class="totp-icon">&#128241;</div>
+          <h2>Enter 6-Digit Code</h2>
+          <p class="step-hint">Open your Authenticator app and enter the code for <strong>EVote Bridge</strong></p>
+          <div class="totp-input-wrap">
+            <input type="text" id="totp-input" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" />
+          </div>
+          <div class="totp-timer">
+            <div class="timer-bar" id="timer-bar"></div>
+            <span id="timer-text">30s</span>
+          </div>
+          <button class="btn-primary full" onclick="handleTOTP()">Verify &amp; Login &rarr;</button>
+          <p class="login-error hidden" id="totp-error">Invalid code. Try again.</p>
+          <button class="btn-link" onclick="showQRSetup()">&#8592; Show QR code again</button>
+        </div>
+
+      </div>
+      <p class="login-footer">EVote Bridge &middot; Module 2 &middot; Design Thinking Prototype</p>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: MAIN APP -->
+  <div class="screen hidden" id="screen-app">
+
+    <header class="app-header">
+      <div class="app-logo">
+        <span>&#x2B21;</span> EVote<strong>Bridge</strong>
+      </div>
+      <div class="app-header-right">
+        <div class="booth-badge" id="header-booth">Booth: &mdash;</div>
+        <span class="clock" id="app-clock">--:--:--</span>
+        <button class="btn-logout" onclick="logout()">Logout</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+
+      <div class="steps-bar">
+        <div class="step-item active" id="s1">
+          <span class="step-num">01</span>
+          <span class="step-label">Booth Setup</span>
+        </div>
+        <div class="step-divider"></div>
+        <div class="step-item" id="s2">
+          <span class="step-num">02</span>
+          <span class="step-label">Capture ID</span>
+        </div>
+        <div class="step-divider"></div>
+        <div class="step-item" id="s3">
+          <span class="step-num">03</span>
+          <span class="step-label">Scan &amp; Review</span>
+        </div>
+        <div class="step-divider"></div>
+        <div class="step-item" id="s4">
+          <span class="step-num">04</span>
+          <span class="step-label">Send &amp; Save</span>
         </div>
       </div>
-      <div class="form-group">
-        <label>Voter Name</label>
-        <input type="text" id="voter-name" placeholder="Full name as on ID" />
+
+      <!-- STEP 1 -->
+      <div class="step-panel active" id="panel-1">
+        <div class="panel-tag">Step 01</div>
+        <h2>Booth Configuration</h2>
+        <p class="panel-sub">Set up this booth before starting voter verification session.</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label>This Booth ID</label>
+            <input type="text" id="booth-id" placeholder="e.g. TN-CBE-042" />
+          </div>
+          <div class="form-group">
+            <label>Officer Name</label>
+            <input type="text" id="officer-name" placeholder="Your full name" />
+          </div>
+        </div>
+        <button class="btn-primary" onclick="startSession()">Start Session &rarr;</button>
       </div>
 
-      <!-- Camera / Upload Toggle -->
-      <div class="capture-area">
+      <!-- STEP 2 -->
+      <div class="step-panel hidden" id="panel-2">
+        <div class="panel-tag">Step 02</div>
+        <h2>Capture Voter ID</h2>
+        <p class="panel-sub">Take a photo or upload the voter's ID card for scanning.</p>
         <div class="capture-tabs">
-          <button class="tab-btn active" onclick="switchTab('camera')">📷 Camera</button>
-          <button class="tab-btn" onclick="switchTab('upload')">📁 Upload</button>
+          <button class="tab active" onclick="switchTab(event,'camera')">&#128247; Camera</button>
+          <button class="tab" onclick="switchTab(event,'upload')">&#128193; Upload</button>
         </div>
-
-        <!-- Camera Panel -->
-        <div id="camera-panel">
-          <div class="video-wrap">
+        <div id="tab-camera">
+          <div class="video-box">
             <video id="video" autoplay playsinline></video>
-            <canvas id="canvas" style="display:none;"></canvas>
-            <div class="video-overlay" id="video-overlay">
-              <div class="scan-line"></div>
-              <p>Camera preview will appear here</p>
+            <div class="video-placeholder" id="video-placeholder">
+              <div class="scan-anim"></div>
+              <p>Camera not started</p>
             </div>
           </div>
-          <div class="camera-controls">
-            <button class="btn-secondary" onclick="startCamera()">▶ Start Camera</button>
-            <button class="btn-capture" onclick="capturePhoto()" id="capture-btn" disabled>⬤ Capture</button>
-            <button class="btn-secondary" onclick="stopCamera()">■ Stop</button>
+          <div class="cam-controls">
+            <button class="btn-secondary" onclick="startCam()">&#9654; Start</button>
+            <button class="btn-capture" id="cap-btn" onclick="captureImg()" disabled>&#11044; Capture</button>
+            <button class="btn-secondary" onclick="stopCam()">&#9632; Stop</button>
           </div>
         </div>
-
-        <!-- Upload Panel -->
-        <div id="upload-panel" class="hidden">
-          <label class="upload-zone" for="file-input">
-            <div class="upload-icon">⬆</div>
+        <div id="tab-upload" class="hidden">
+          <label class="upload-drop" for="file-in">
+            <span class="upload-icon">&#11014;</span>
             <p>Click or drag Voter ID image here</p>
-            <span>.JPG, .PNG, .WEBP supported</span>
+            <span class="upload-note">JPG, PNG, WEBP supported</span>
           </label>
-          <input type="file" id="file-input" accept="image/*" onchange="handleFileUpload(event)" style="display:none;" />
+          <input type="file" id="file-in" accept="image/*" onchange="handleUpload(event)" style="display:none" />
         </div>
-
-        <!-- Preview -->
-        <div id="preview-area" class="hidden">
-          <p class="preview-label">Captured Image Preview</p>
-          <img id="preview-img" src="" alt="Voter ID Preview" />
-          <button class="btn-link" onclick="retakePhoto()">↩ Retake / Change</button>
+        <div id="preview-wrap" class="hidden">
+          <p class="preview-lbl">Captured Image</p>
+          <img id="preview-img" src="" alt="Voter ID" />
+          <button class="btn-link" onclick="retake()">&#8617; Retake</button>
         </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn-ghost" onclick="goToStep1()">← Back</button>
-        <button class="btn-primary" onclick="goToStep3()">Review & Send →</button>
-      </div>
-    </section>
-
-    <!-- STEP 3: Review + Send -->
-    <section class="card hidden" id="section-3">
-      <div class="card-tag">Step 03</div>
-      <h2>Review & Dispatch</h2>
-      <p class="subtitle">Confirm all details before sending notification to home booth.</p>
-
-      <div class="review-grid" id="review-grid">
-        <!-- Populated by JS -->
-      </div>
-
-      <div class="alert-box" id="message-preview">
-        <!-- Message preview populated by JS -->
-      </div>
-
-      <div class="btn-row">
-        <button class="btn-ghost" onclick="goToStep2()">← Edit Details</button>
-        <button class="btn-primary" id="send-btn" onclick="sendNotification()">
-          <span id="send-label">📡 Send Notification</span>
-        </button>
-      </div>
-      <p id="send-error" class="error-msg hidden"></p>
-    </section>
-
-    <!-- STEP 4: Success -->
-    <section class="card hidden" id="section-4">
-      <div class="card-tag">Step 04</div>
-      <div class="success-screen">
-        <div class="success-icon">✓</div>
-        <h2>Notification Sent!</h2>
-        <p class="subtitle">The home booth has been alerted. This voter is marked as voted.</p>
-
-        <div class="sent-summary" id="sent-summary">
-          <!-- Populated by JS -->
-        </div>
-
-        <div class="btn-row center">
-          <button class="btn-primary" onclick="nextVoter()">Next Voter →</button>
-          <button class="btn-ghost" onclick="goToStep1()">Change Booth Setup</button>
+        <div class="btn-row">
+          <button class="btn-ghost" onclick="goStep(1)">&#8592; Back</button>
+          <button class="btn-primary" onclick="goScan()">Scan ID &rarr;</button>
         </div>
       </div>
-    </section>
 
-  </main>
+      <!-- STEP 3 -->
+      <div class="step-panel hidden" id="panel-3">
+        <div class="panel-tag">Step 03</div>
+        <h2>Scan &amp; Review Details</h2>
+        <p class="panel-sub">AI is reading the Voter ID card. Review and correct if needed.</p>
+        <div class="scan-status" id="scan-status">
+          <div class="scan-spinner"></div>
+          <p id="scan-msg">Scanning voter ID card...</p>
+        </div>
+        <div class="review-form hidden" id="review-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Voter Name <span class="auto-tag">Auto-detected</span></label>
+              <input type="text" id="r-name" placeholder="Voter full name" />
+            </div>
+            <div class="form-group">
+              <label>Voter ID Number <span class="auto-tag">Auto-detected</span></label>
+              <input type="text" id="r-id" placeholder="ID number" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Home Booth ID <span class="manual-tag">Enter manually</span></label>
+            <input type="text" id="r-home-booth" placeholder="e.g. TN-CHN-007" />
+          </div>
+          <div class="raw-ocr-toggle">
+            <button class="btn-link" onclick="toggleRaw()">&#9660; View raw scanned text</button>
+            <pre id="raw-ocr" class="hidden"></pre>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-ghost" onclick="goStep(2)">&#8592; Back</button>
+          <button class="btn-primary" onclick="goReview()" id="review-btn" disabled>Review &amp; Send &rarr;</button>
+        </div>
+      </div>
 
-  <!-- Footer -->
-  <footer class="footer">
-    <p>EVoteBridge · Design Thinking Prototype · Module 2 · <span id="date-footer"></span></p>
-    <p class="footer-note">Built for election accessibility — enabling cross-district voting verification</p>
-  </footer>
+      <!-- STEP 4 -->
+      <div class="step-panel hidden" id="panel-4">
+        <div class="panel-tag">Step 04</div>
+        <h2>Confirm &amp; Dispatch</h2>
+        <p class="panel-sub">Review all details before sending notification to home booth.</p>
+        <div class="confirm-grid" id="confirm-grid"></div>
+        <div class="email-preview">
+          <div class="email-preview-label">&#128231; Email will be sent to: <strong id="email-to"></strong></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-ghost" onclick="goStep(3)">&#8592; Edit</button>
+          <button class="btn-primary" id="send-btn" onclick="sendAndSave()">
+            <span id="send-label">&#128225; Send &amp; Save &rarr;</span>
+          </button>
+        </div>
+        <p class="send-error hidden" id="send-error"></p>
+      </div>
 
+      <!-- STEP 5: Success -->
+      <div class="step-panel hidden" id="panel-5">
+        <div class="success-wrap">
+          <div class="success-check">&#10003;</div>
+          <h2>Voter Verified!</h2>
+          <p class="panel-sub">Email sent to home booth. Record saved in database.</p>
+          <div class="success-summary" id="success-summary"></div>
+          <div class="btn-row center">
+            <button class="btn-primary" onclick="nextVoter()">Next Voter &rarr;</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <canvas id="canvas" style="display:none"></canvas>
   <script src="app.js"></script>
 </body>
 </html>
