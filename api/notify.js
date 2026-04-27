@@ -20,25 +20,23 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { voter_name, voter_id_number, home_booth, voted_at_booth, officer_name, voted_at } = req.body;
+  const { voter_name, voter_id_number, home_booth, voted_at_booth, officer_name } = req.body;
 
   if (!voter_name || !voter_id_number || !home_booth || !voted_at_booth || !officer_name) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  const ts = voted_at || new Date().toISOString();
-  const readable = new Date(ts).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+  const readable = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
 
   try {
-    // 1. Save to Supabase
+    // 1. Save to Supabase (no voted_at — uses created_at automatically)
     const { error: dbErr } = await supabase.from('voters').insert([{
       voter_name,
       voter_id_number,
       home_booth,
       voted_at_booth,
       officer_name,
-      email_sent_to: process.env.RECEIVER_EMAIL,
-      voted_at: ts
+      email_sent_to: process.env.RECEIVER_EMAIL
     }]);
 
     if (dbErr) {
