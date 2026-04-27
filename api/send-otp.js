@@ -1,5 +1,4 @@
 const twilio = require('twilio');
-
 const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH);
 
 module.exports = async (req, res) => {
@@ -11,14 +10,10 @@ module.exports = async (req, res) => {
   try {
     await client.verify.v2
       .services(process.env.TWILIO_VERIFY_SID)
-      .verifications.create({
-        to: process.env.OFFICER_PHONE,
-        channel: 'sms'
-      });
-
-    return res.status(200).json({ success: true, message: 'OTP sent!' });
+      .verifications.create({ to: process.env.OFFICER_PHONE, channel: 'sms' });
+    return res.status(200).json({ success: true });
   } catch (err) {
-    console.error('Twilio send error:', err);
+    console.error('Send OTP error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
