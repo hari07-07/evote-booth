@@ -1,5 +1,5 @@
 {
-  "name": "evote-bridge-final",
+  "name": "evote-bridge",
   "version": "3.0.0",
   "dependencies": {
     "twilio": "^4.19.0",
