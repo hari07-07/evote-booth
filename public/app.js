@@ -272,9 +272,7 @@ function takePhoto() {
   }
   canvas.width = vid.videoWidth;
   canvas.height = vid.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.filter = "contrast(150%) brightness(120%)";
-  ctx.drawImage(vid, 0, 0);
+  canvas.getContext('2d').drawImage(vid, 0, 0);
   const url = canvas.toDataURL('image/jpeg', 0.92);
   setPreview(url);
   stopCam();
@@ -322,93 +320,79 @@ async function runOCR() {
   const msgEl = document.getElementById('scanMsg');
 
   try {
-    msgEl.textContent = 'Scanning ID...';
-
-    const formData = new FormData();
-    formData.append("base64Image", state.image);
-    formData.append("language", "eng");
-    formData.append("OCREngine", "2");
-
-    const response = await fetch("https://api.ocr.space/parse/image", {
-      method: "POST",
-      headers: {
-        apikey: "3ef639928088957"
-      },
-      body: formData
+    msgEl.textContent = 'Loading OCR engine...';
+    const { createWorker } = Tesseract;
+    const worker = await createWorker('eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          msgEl.textContent = 'Scanning... ' + Math.round(m.progress * 100) + '%';
+        }
+      }
     });
 
-    const result = await response.json();
-    console.log("OCR RESULT:", result);
-
-    if (result.IsErroredOnProcessing) {
-      throw new Error(result.ErrorMessage);
-    }
-
-    const text = result?.ParsedResults?.[0]?.ParsedText;
-
-    if (!text || text.trim() === "") {
-      throw new Error("No text detected");
-    }
+    const { data: { text } } = await worker.recognize(state.image);
+    await worker.terminate();
 
     document.getElementById('rawOcr').textContent = text;
 
     const parsed = parseVoterID(text);
-
-    document.getElementById('fName').value = parsed.name || '';
-    document.getElementById('fId').value = parsed.id || '';
+    document.getElementById('fName').value = parsed.name;
+    document.getElementById('fId').value = parsed.id;
     document.getElementById('fBooth').value = '';
 
-    msgEl.textContent = 'Scan complete ✅';
+    document.getElementById('scanLoader').style.display = 'none';
+    document.getElementById('scanForm').style.display = 'block';
+    document.getElementById('btnConfirm').disabled = false;
 
   } catch (err) {
-    console.error("OCR ERROR:", err);
-    msgEl.textContent = 'Scan failed. Fill manually.';
+    msgEl.textContent = 'Scan done. Fill details manually if needed.';
+    document.getElementById('scanLoader').style.display = 'none';
+    document.getElementById('scanForm').style.display = 'block';
+    document.getElementById('btnConfirm').disabled = false;
   }
-
-  document.getElementById('scanLoader').style.display = 'none';
-  document.getElementById('scanForm').style.display = 'block';
-  document.getElementById('btnConfirm').disabled = false;
 }
+
 function parseVoterID(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let name = '', id = '';
 
-  let name = '';
-  let id = '';
-
-  // Find EPIC ID
+  // Indian EPIC ID: 3 capital letters + 7 digits
   const idMatch = text.match(/[A-Z]{3}[0-9]{7}/);
   if (idMatch) id = idMatch[0];
 
-  // Find name
+  // Find name after keywords
   for (let i = 0; i < lines.length; i++) {
     const low = lines[i].toLowerCase();
-
-    if (
-      (low.includes('name') ||
-       low.includes('elector') ||
-       low.includes('voter')) &&
-      lines[i + 1]
-    ) {
-      const candidate = lines[i + 1]
-        .replace(/[^a-zA-Z\s]/g, '')
-        .trim();
-
-      if (candidate.length > 3) {
-        name = candidate;
-        break;
-      }
+    if ((low.includes('name') || low.includes('voter') || low.includes('elector')) && lines[i + 1]) {
+      const candidate = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
+      if (candidate.length > 2) { name = candidate; break; }
     }
   }
 
-  // Fallback
+  // Fallback: longest ALL CAPS line
   if (!name) {
-    const caps = lines.filter(l => /^[A-Z\s]{4,}$/.test(l));
-    if (caps.length) {
-      name = caps.sort((a, b) => b.length - a.length)[0];
-    }
+    const caps = lines.filter(l => /^[A-Z][A-Z\s]{3,}$/.test(l));
+    if (caps.length) name = caps.sort((a, b) => b.length - a.length)[0];
   }
 
   return { name, id };
+}
+
+function toggleRaw() {
+  const el = document.getElementById('rawOcr');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function goConfirm() {
+  const name = document.getElementById('fName').value.trim();
+  const id = document.getElementById('fId').value.trim();
+  const booth = document.getElementById('fBooth').value.trim();
+  if (!name || !id || !booth) { alert('Please fill in all three fields before confirming.'); return; }
+  state.voterName = name;
+  state.voterId = id;
+  state.homeBooth = booth;
+  buildConfirm();
+  goP(4);
 }
 
 // ══════════════════════════════
