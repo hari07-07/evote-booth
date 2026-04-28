@@ -1,4 +1,4 @@
-/* EVote Bridge — Complete Clean Logic */
+/* EVote Bridge — QR Scanner + Manual Fallback */
 
 const ADMIN = { user: 'admin', pass: 'admin123' };
 const RECEIVER = '25205012@nec.edu.in';
@@ -7,7 +7,7 @@ let state = {
   boothId: '', officerName: '',
   stream: null, image: null,
   voterName: '', voterId: '', homeBooth: '',
-  timerInt: null
+  timerInt: null, qrScanInterval: null
 };
 
 // Clock
@@ -23,7 +23,6 @@ function showLogin() {
   document.getElementById('APP').style.display = 'none';
   document.getElementById('LOGIN').style.display = 'flex';
 }
-
 function showApp() {
   document.getElementById('LOGIN').style.display = 'none';
   document.getElementById('APP').style.display = 'flex';
@@ -51,19 +50,16 @@ async function sendOTP() {
 
   try {
     const res = await fetch('/api/send-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}'
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
     });
     const data = await res.json();
-
     if (data.success) {
       document.getElementById('C1').style.display = 'none';
       document.getElementById('C2').style.display = 'block';
       document.getElementById('iOtp').focus();
       startTimer();
     } else {
-      errEl.textContent = 'Failed to send OTP: ' + (data.error || 'Unknown error');
+      errEl.textContent = 'Failed: ' + (data.error || 'Unknown error');
       errEl.style.display = 'block';
       btn.disabled = false;
       btn.textContent = 'Send OTP →';
@@ -104,7 +100,7 @@ async function verifyOTP() {
   const btn = document.getElementById('btnVerify');
 
   if (code.length !== 6) {
-    errEl.textContent = 'Please enter the full 6-digit code.';
+    errEl.textContent = 'Enter the full 6-digit code.';
     errEl.style.display = 'block';
     return;
   }
@@ -114,17 +110,15 @@ async function verifyOTP() {
 
   try {
     const res = await fetch('/api/verify-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code })
     });
     const data = await res.json();
-
     if (data.valid) {
       clearInterval(state.timerInt);
-      showApp(); // ← LOGIN COMPLETELY GONE
+      showApp();
     } else {
-      errEl.textContent = 'Invalid OTP. Check SMS and try again.';
+      errEl.textContent = 'Invalid OTP. Try again.';
       errEl.style.display = 'block';
       document.getElementById('iOtp').value = '';
       document.getElementById('iOtp').focus();
@@ -132,7 +126,7 @@ async function verifyOTP() {
       btn.textContent = 'Verify & Login →';
     }
   } catch (err) {
-    errEl.textContent = 'Server error. Try again.';
+    errEl.textContent = 'Server error.';
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Verify & Login →';
@@ -145,18 +139,15 @@ function backToLogin() {
   document.getElementById('C1').style.display = 'block';
   document.getElementById('errOtp').style.display = 'none';
   document.getElementById('iOtp').value = '';
-  const btn = document.getElementById('btnSend');
-  btn.disabled = false;
-  btn.textContent = 'Send OTP →';
+  document.getElementById('btnSend').disabled = false;
+  document.getElementById('btnSend').textContent = 'Send OTP →';
 }
 
 function logout() {
   if (!confirm('Logout and end this session?')) return;
   stopCam();
   clearInterval(state.timerInt);
-  state = { boothId: '', officerName: '', stream: null, image: null, voterName: '', voterId: '', homeBooth: '', timerInt: null };
-
-  // Reset login
+  state = { boothId: '', officerName: '', stream: null, image: null, voterName: '', voterId: '', homeBooth: '', timerInt: null, qrScanInterval: null };
   document.getElementById('iUser').value = '';
   document.getElementById('iPass').value = '';
   document.getElementById('iOtp').value = '';
@@ -166,12 +157,10 @@ function logout() {
   document.getElementById('errOtp').style.display = 'none';
   document.getElementById('btnSend').disabled = false;
   document.getElementById('btnSend').textContent = 'Send OTP →';
-
   goP(1);
   showLogin();
 }
 
-// Enter key
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   if (document.getElementById('C1').style.display !== 'none') sendOTP();
@@ -179,7 +168,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ══════════════════════════════
-// PANEL NAVIGATION
+// PANELS
 // ══════════════════════════════
 function goP(n) {
   [1, 2, 3, 4, 5].forEach(i => {
@@ -188,30 +177,21 @@ function goP(n) {
   });
   [1, 2, 3, 4].forEach(i => {
     const s = document.getElementById('ST' + i);
-    if (s) {
-      s.classList.remove('active', 'done');
-      if (i < n) s.classList.add('done');
-    }
+    if (s) { s.classList.remove('active', 'done'); if (i < n) s.classList.add('done'); }
   });
-
-  const activeP = document.getElementById('P' + n);
-  if (activeP) activeP.style.display = 'block';
-
-  if (n <= 4) {
-    const activeS = document.getElementById('ST' + n);
-    if (activeS) activeS.classList.add('active');
-  }
-
+  const ap = document.getElementById('P' + n);
+  if (ap) ap.style.display = 'block';
+  if (n <= 4) { const as = document.getElementById('ST' + n); if (as) as.classList.add('active'); }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // ══════════════════════════════
-// STEP 1: Booth Setup
+// STEP 1
 // ══════════════════════════════
 function startBooth() {
   const bid = document.getElementById('boothId').value.trim();
   const oname = document.getElementById('officerName').value.trim();
-  if (!bid || !oname) { alert('Please fill in both Booth ID and Officer Name.'); return; }
+  if (!bid || !oname) { alert('Please fill in both fields.'); return; }
   state.boothId = bid;
   state.officerName = oname;
   document.getElementById('boothPill').textContent = 'Booth: ' + bid;
@@ -219,7 +199,7 @@ function startBooth() {
 }
 
 // ══════════════════════════════
-// STEP 2: Camera
+// STEP 2: CAMERA + LIVE QR SCAN
 // ══════════════════════════════
 function switchTab(e, tab) {
   document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
@@ -243,46 +223,143 @@ async function startCam() {
     await vid.play();
     document.getElementById('camCover').style.display = 'none';
     document.getElementById('btnCapture').disabled = false;
+    setQRStatus('🔍 Point camera at QR code on Voter ID...', '#3b82f6');
+    startLiveQR();
   } catch (err) {
     if (err.name === 'NotAllowedError') {
-      alert('Camera permission denied!\n\nClick the camera icon in your browser address bar → Allow → Refresh page.');
+      alert('Camera permission denied!\n\nAllow camera in browser settings and refresh.');
     } else {
-      alert('Camera error: ' + err.message + '\n\nUse Upload tab instead.');
+      alert('Camera error: ' + err.message);
     }
   }
 }
 
 function stopCam() {
+  stopLiveQR();
   if (state.stream) {
     state.stream.getTracks().forEach(t => t.stop());
     state.stream = null;
-    const vid = document.getElementById('vid');
-    vid.srcObject = null;
+    document.getElementById('vid').srcObject = null;
     document.getElementById('btnCapture').disabled = true;
     document.getElementById('camCover').style.display = 'flex';
   }
 }
 
+function setQRStatus(msg, color) {
+  const el = document.getElementById('qrStatus');
+  if (el) { el.textContent = msg; el.style.color = color || '#3b82f6'; }
+}
+
+// ── Live QR scanning every 300ms ──
+function startLiveQR() {
+  stopLiveQR();
+  const vid = document.getElementById('vid');
+  const canvas = document.getElementById('snapCanvas');
+  const ctx = canvas.getContext('2d');
+
+  state.qrScanInterval = setInterval(() => {
+    if (!vid.videoWidth || vid.readyState < 2) return;
+    canvas.width = vid.videoWidth;
+    canvas.height = vid.videoHeight;
+    ctx.drawImage(vid, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    try {
+      const qr = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert'
+      });
+      if (qr && qr.data) {
+        stopLiveQR();
+        setQRStatus('✅ QR Code Found!', '#10b981');
+        // Snapshot the frame
+        const dataURL = canvas.toDataURL('image/jpeg', 0.92);
+        setPreview(dataURL);
+        stopCam();
+        // Process QR data
+        parseAndFill(qr.data);
+        // Auto go to review
+        goP(3);
+        showScanForm();
+      }
+    } catch (e) { /* jsQR not ready */ }
+  }, 300);
+}
+
+function stopLiveQR() {
+  if (state.qrScanInterval) {
+    clearInterval(state.qrScanInterval);
+    state.qrScanInterval = null;
+  }
+}
+
+// ── Manual capture button ──
 function takePhoto() {
   const vid = document.getElementById('vid');
   const canvas = document.getElementById('snapCanvas');
   if (!vid.videoWidth || vid.readyState < 2) {
-    alert('Camera not ready yet. Wait a moment.');
+    alert('Camera not ready. Wait a moment.');
     return;
   }
   canvas.width = vid.videoWidth;
   canvas.height = vid.videoHeight;
   canvas.getContext('2d').drawImage(vid, 0, 0);
-  const url = canvas.toDataURL('image/jpeg', 0.92);
-  setPreview(url);
+  const dataURL = canvas.toDataURL('image/jpeg', 0.92);
+  setPreview(dataURL);
   stopCam();
+
+  // Try QR on captured image
+  const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  try {
+    const qr = jsQR(imageData.data, imageData.width, imageData.height);
+    if (qr && qr.data) {
+      parseAndFill(qr.data);
+      goP(3);
+      showScanForm();
+    } else {
+      // No QR — go to manual form
+      goP(3);
+      showScanForm('⚠️ No QR found — fill details manually');
+    }
+  } catch (e) {
+    goP(3);
+    showScanForm();
+  }
 }
 
+// ── Upload ──
 function fileChosen(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = ev => setPreview(ev.target.result);
+  reader.onload = ev => {
+    const dataURL = ev.target.result;
+    setPreview(dataURL);
+    // Try QR on uploaded image
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.getElementById('snapCanvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      try {
+        const qr = jsQR(imageData.data, imageData.width, imageData.height);
+        if (qr && qr.data) {
+          parseAndFill(qr.data);
+          goP(3);
+          showScanForm('✅ QR Code detected from image!');
+        } else {
+          goP(3);
+          showScanForm('⚠️ No QR found — fill details manually');
+        }
+      } catch (e) {
+        goP(3);
+        showScanForm();
+      }
+    };
+    img.src = dataURL;
+  };
   reader.readAsDataURL(file);
 }
 
@@ -296,6 +373,7 @@ function setPreview(url) {
 
 function retake() {
   state.image = null;
+  stopCam();
   document.getElementById('previewBox').style.display = 'none';
   document.getElementById('previewImg').src = '';
   document.getElementById('tabCam').style.display = 'block';
@@ -306,78 +384,64 @@ function retake() {
 function goScan() {
   if (!state.image) { alert('Please capture or upload the Voter ID first.'); return; }
   goP(3);
-  runOCR();
+  showScanForm();
 }
 
-// ══════════════════════════════
-// STEP 3: OCR
-// ══════════════════════════════
-async function runOCR() {
-  document.getElementById('scanLoader').style.display = 'flex';
-  document.getElementById('scanForm').style.display = 'none';
-  document.getElementById('btnConfirm').disabled = true;
-
-  const msgEl = document.getElementById('scanMsg');
-
-  try {
-    msgEl.textContent = 'Loading OCR engine...';
-    const { createWorker } = Tesseract;
-    const worker = await createWorker('eng', 1, {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          msgEl.textContent = 'Scanning... ' + Math.round(m.progress * 100) + '%';
-        }
-      }
-    });
-
-    const { data: { text } } = await worker.recognize(state.image);
-    await worker.terminate();
-
-    document.getElementById('rawOcr').textContent = text;
-
-    const parsed = parseVoterID(text);
-    document.getElementById('fName').value = parsed.name;
-    document.getElementById('fId').value = parsed.id;
-    document.getElementById('fBooth').value = '';
-
-    document.getElementById('scanLoader').style.display = 'none';
-    document.getElementById('scanForm').style.display = 'block';
-    document.getElementById('btnConfirm').disabled = false;
-
-  } catch (err) {
-    msgEl.textContent = 'Scan done. Fill details manually if needed.';
-    document.getElementById('scanLoader').style.display = 'none';
-    document.getElementById('scanForm').style.display = 'block';
-    document.getElementById('btnConfirm').disabled = false;
+function showScanForm(msg) {
+  document.getElementById('scanLoader').style.display = 'none';
+  document.getElementById('scanForm').style.display = 'block';
+  document.getElementById('btnConfirm').disabled = false;
+  if (msg) {
+    document.getElementById('rawOcr').textContent = msg;
+    document.getElementById('rawOcr').style.display = 'block';
   }
 }
 
-function parseVoterID(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+// ══════════════════════════════
+// PARSE QR DATA
+// ══════════════════════════════
+function parseAndFill(rawData) {
+  console.log('QR Data:', rawData);
   let name = '', id = '';
 
-  // Indian EPIC ID: 3 capital letters + 7 digits
-  const idMatch = text.match(/[A-Z]{3}[0-9]{7}/);
-  if (idMatch) id = idMatch[0];
+  try {
+    // Try JSON
+    const json = JSON.parse(rawData);
+    name = json.name || json.Name || json.voter_name || json.nm || '';
+    id = json.epic_no || json.voter_id || json.EPIC || json.id || '';
+  } catch (e) {
+    // Parse as text
+    const lines = rawData.split(/[\n,|;\/]/).map(l => l.trim()).filter(Boolean);
 
-  // Find name after keywords
-  for (let i = 0; i < lines.length; i++) {
-    const low = lines[i].toLowerCase();
-    if ((low.includes('name') || low.includes('voter') || low.includes('elector')) && lines[i + 1]) {
-      const candidate = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
-      if (candidate.length > 2) { name = candidate; break; }
+    // Find EPIC ID: 3 capital letters + 7 digits
+    const epicMatch = rawData.match(/[A-Z]{3}[0-9]{7}/);
+    if (epicMatch) id = epicMatch[0];
+
+    // Find name from lines
+    for (let i = 0; i < lines.length; i++) {
+      const low = lines[i].toLowerCase();
+      if ((low.includes('name') || low.includes('nm')) && lines[i + 1]) {
+        const c = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
+        if (c.length > 2) { name = c; break; }
+      }
+    }
+
+    // Fallback: ALL CAPS line
+    if (!name) {
+      const caps = lines.filter(l => /^[A-Z][A-Z\s]{3,30}$/.test(l));
+      if (caps.length) name = caps[0];
     }
   }
 
-  // Fallback: longest ALL CAPS line
-  if (!name) {
-    const caps = lines.filter(l => /^[A-Z][A-Z\s]{3,}$/.test(l));
-    if (caps.length) name = caps.sort((a, b) => b.length - a.length)[0];
-  }
-
-  return { name, id };
+  document.getElementById('fName').value = name || '';
+  document.getElementById('fId').value = id || '';
+  document.getElementById('fBooth').value = '';
+  document.getElementById('rawOcr').textContent = 'QR Raw Data:\n' + rawData;
 }
 
+// ══════════════════════════════
+// STEP 3
+// ══════════════════════════════
 function toggleRaw() {
   const el = document.getElementById('rawOcr');
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -387,7 +451,7 @@ function goConfirm() {
   const name = document.getElementById('fName').value.trim();
   const id = document.getElementById('fId').value.trim();
   const booth = document.getElementById('fBooth').value.trim();
-  if (!name || !id || !booth) { alert('Please fill in all three fields before confirming.'); return; }
+  if (!name || !id || !booth) { alert('Please fill in all three fields.'); return; }
   state.voterName = name;
   state.voterId = id;
   state.homeBooth = booth;
@@ -396,7 +460,7 @@ function goConfirm() {
 }
 
 // ══════════════════════════════
-// STEP 4: Confirm & Send
+// STEP 4
 // ══════════════════════════════
 function buildConfirm() {
   const ts = new Date().toLocaleString('en-IN', { hour12: true, timeZone: 'Asia/Kolkata' });
@@ -415,7 +479,6 @@ async function sendData() {
   const btn = document.getElementById('btnSendData');
   const txt = document.getElementById('sendTxt');
   const err = document.getElementById('sendErr');
-
   btn.disabled = true;
   txt.textContent = '⏳ Sending...';
   err.style.display = 'none';
@@ -429,17 +492,14 @@ async function sendData() {
         voter_id_number: state.voterId,
         home_booth: state.homeBooth,
         voted_at_booth: state.boothId,
-        officer_name: state.officerName,
-        voted_at: new Date().toISOString()
+        officer_name: state.officerName
       })
     });
-
     const data = await res.json();
-
     if (data.success) {
       showSuccess();
     } else {
-      throw new Error(data.error || 'Unknown server error');
+      throw new Error(data.error || 'Unknown error');
     }
   } catch (e) {
     btn.disabled = false;
@@ -450,7 +510,7 @@ async function sendData() {
 }
 
 // ══════════════════════════════
-// STEP 5: Success
+// STEP 5
 // ══════════════════════════════
 function showSuccess() {
   document.getElementById('sumBox').innerHTML = `
@@ -479,6 +539,9 @@ function nextVoter() {
   document.getElementById('fBooth').value = '';
   document.getElementById('rawOcr').textContent = '';
   document.getElementById('rawOcr').style.display = 'none';
+  document.getElementById('scanForm').style.display = 'none';
+  document.getElementById('scanLoader').style.display = 'flex';
+  document.getElementById('scanMsg').textContent = 'Initializing scanner...';
   document.getElementById('btnSendData').disabled = false;
   document.getElementById('sendTxt').textContent = '📡 Send & Save';
   document.getElementById('btnCapture').disabled = true;
