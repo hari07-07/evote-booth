@@ -313,30 +313,22 @@ async function runOCRSpace() {
   document.getElementById('scanLoader').style.display = 'flex';
   document.getElementById('scanForm').style.display = 'none';
   document.getElementById('btnConfirm').disabled = true;
-  document.getElementById('scanMsg').textContent = '🔍 Reading Voter ID card...';
+  document.getElementById('scanMsg').textContent = '🔍 Reading Voter ID...';
 
   try {
-    // Convert base64 image to blob
-    const base64 = state.image.split(',')[1];
-    const mimeType = state.image.split(';')[0].split(':')[1];
-    const byteChars = atob(base64);
-    const byteArr = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) {
-      byteArr[i] = byteChars.charCodeAt(i);
-    }
-    const blob = new Blob([byteArr], { type: mimeType });
+    // Compress image first
+    const compressed = await compressImage(state.image);
 
-    // Build form data for OCR.space
     const formData = new FormData();
-    formData.append('file', blob, 'voter-id.jpg');
+    formData.append('base64Image', compressed);
     formData.append('apikey', OCR_API_KEY);
     formData.append('language', 'eng');
     formData.append('isOverlayRequired', 'false');
     formData.append('detectOrientation', 'true');
     formData.append('scale', 'true');
-    formData.append('OCREngine', '2'); // Engine 2 is better for IDs
+    formData.append('OCREngine', '2');
 
-    document.getElementById('scanMsg').textContent = '📡 Sending to OCR engine...';
+    document.getElementById('scanMsg').textContent = '📡 Extracting text...';
 
     const res = await fetch('https://api.ocr.space/parse/image', {
       method: 'POST',
@@ -344,20 +336,18 @@ async function runOCRSpace() {
     });
 
     const data = await res.json();
+    console.log('OCR Response:', JSON.stringify(data));
 
-    if (data.IsErroredOnProcessing) {
-      throw new Error(data.ErrorMessage || 'OCR failed');
+    const rawText = data?.ParsedResults?.[0]?.ParsedText || '';
+
+    if (!rawText) {
+      throw new Error('No text extracted. Try better lighting.');
     }
 
-    const rawText = data.ParsedResults?.[0]?.ParsedText || '';
-    console.log('OCR Raw Text:', rawText);
-
     document.getElementById('rawOcr').textContent = rawText;
+    document.getElementById('rawOcr').style.display = 'block';
 
-    // Parse the extracted text
     const parsed = parseVoterIDText(rawText);
-
-    // Auto-fill fields
     document.getElementById('fName').value = parsed.name;
     document.getElementById('fId').value = parsed.id;
     document.getElementById('fBooth').value = '';
@@ -366,18 +356,31 @@ async function runOCRSpace() {
     document.getElementById('scanForm').style.display = 'block';
     document.getElementById('btnConfirm').disabled = false;
 
-    // Show status
-    if (parsed.name || parsed.id) {
-      document.getElementById('rawOcr').style.display = 'block';
-    }
-
   } catch (err) {
-    console.error('OCR error:', err);
-    document.getElementById('scanMsg').textContent = '⚠️ OCR failed. Fill manually.';
+    console.error('OCR Error:', err);
+    document.getElementById('scanMsg').textContent = '⚠️ ' + err.message;
     document.getElementById('scanLoader').style.display = 'none';
     document.getElementById('scanForm').style.display = 'block';
     document.getElementById('btnConfirm').disabled = false;
   }
+}
+
+// Compress image before sending
+function compressImage(dataURL) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const MAX = 1000;
+      let w = img.width, h = img.height;
+      if (w > MAX) { h = h * MAX / w; w = MAX; }
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = dataURL;
+  });
 }
 
 // ══════════════════════════════
