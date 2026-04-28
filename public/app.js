@@ -1,7 +1,8 @@
-/* EVote Bridge — QR Scanner + Manual Fallback */
+/* EVote Bridge — OCR.space Auto-fill + QR Fallback */
 
 const ADMIN = { user: 'admin', pass: 'admin123' };
 const RECEIVER = '25205012@nec.edu.in';
+const OCR_API_KEY = '3ef639928088957';
 
 let state = {
   boothId: '', officerName: '',
@@ -59,7 +60,7 @@ async function sendOTP() {
       document.getElementById('iOtp').focus();
       startTimer();
     } else {
-      errEl.textContent = 'Failed: ' + (data.error || 'Unknown error');
+      errEl.textContent = 'Failed: ' + (data.error || 'Unknown');
       errEl.style.display = 'block';
       btn.disabled = false;
       btn.textContent = 'Send OTP →';
@@ -199,7 +200,7 @@ function startBooth() {
 }
 
 // ══════════════════════════════
-// STEP 2: CAMERA + LIVE QR SCAN
+// STEP 2: CAMERA
 // ══════════════════════════════
 function switchTab(e, tab) {
   document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
@@ -223,8 +224,7 @@ async function startCam() {
     await vid.play();
     document.getElementById('camCover').style.display = 'none';
     document.getElementById('btnCapture').disabled = false;
-    setQRStatus('🔍 Point camera at QR code on Voter ID...', '#3b82f6');
-    startLiveQR();
+    setQRStatus('📷 Position Voter ID card in frame, then tap Capture', '#3b82f6');
   } catch (err) {
     if (err.name === 'NotAllowedError') {
       alert('Camera permission denied!\n\nAllow camera in browser settings and refresh.');
@@ -250,41 +250,6 @@ function setQRStatus(msg, color) {
   if (el) { el.textContent = msg; el.style.color = color || '#3b82f6'; }
 }
 
-// ── Live QR scanning every 300ms ──
-function startLiveQR() {
-  stopLiveQR();
-  const vid = document.getElementById('vid');
-  const canvas = document.getElementById('snapCanvas');
-  const ctx = canvas.getContext('2d');
-
-  state.qrScanInterval = setInterval(() => {
-    if (!vid.videoWidth || vid.readyState < 2) return;
-    canvas.width = vid.videoWidth;
-    canvas.height = vid.videoHeight;
-    ctx.drawImage(vid, 0, 0);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    try {
-      const qr = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert'
-      });
-      if (qr && qr.data) {
-        stopLiveQR();
-        setQRStatus('✅ QR Code Found!', '#10b981');
-        // Snapshot the frame
-        const dataURL = canvas.toDataURL('image/jpeg', 0.92);
-        setPreview(dataURL);
-        stopCam();
-        // Process QR data
-        parseAndFill(qr.data);
-        // Auto go to review
-        goP(3);
-        showScanForm();
-      }
-    } catch (e) { /* jsQR not ready */ }
-  }, 300);
-}
-
 function stopLiveQR() {
   if (state.qrScanInterval) {
     clearInterval(state.qrScanInterval);
@@ -292,7 +257,7 @@ function stopLiveQR() {
   }
 }
 
-// ── Manual capture button ──
+// ── Manual Capture ──
 function takePhoto() {
   const vid = document.getElementById('vid');
   const canvas = document.getElementById('snapCanvas');
@@ -306,24 +271,6 @@ function takePhoto() {
   const dataURL = canvas.toDataURL('image/jpeg', 0.92);
   setPreview(dataURL);
   stopCam();
-
-  // Try QR on captured image
-  const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-  try {
-    const qr = jsQR(imageData.data, imageData.width, imageData.height);
-    if (qr && qr.data) {
-      parseAndFill(qr.data);
-      goP(3);
-      showScanForm();
-    } else {
-      // No QR — go to manual form
-      goP(3);
-      showScanForm('⚠️ No QR found — fill details manually');
-    }
-  } catch (e) {
-    goP(3);
-    showScanForm();
-  }
 }
 
 // ── Upload ──
@@ -331,35 +278,7 @@ function fileChosen(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = ev => {
-    const dataURL = ev.target.result;
-    setPreview(dataURL);
-    // Try QR on uploaded image
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.getElementById('snapCanvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      try {
-        const qr = jsQR(imageData.data, imageData.width, imageData.height);
-        if (qr && qr.data) {
-          parseAndFill(qr.data);
-          goP(3);
-          showScanForm('✅ QR Code detected from image!');
-        } else {
-          goP(3);
-          showScanForm('⚠️ No QR found — fill details manually');
-        }
-      } catch (e) {
-        goP(3);
-        showScanForm();
-      }
-    };
-    img.src = dataURL;
-  };
+  reader.onload = ev => setPreview(ev.target.result);
   reader.readAsDataURL(file);
 }
 
@@ -384,59 +303,164 @@ function retake() {
 function goScan() {
   if (!state.image) { alert('Please capture or upload the Voter ID first.'); return; }
   goP(3);
-  showScanForm();
+  runOCRSpace();
 }
 
-function showScanForm(msg) {
-  document.getElementById('scanLoader').style.display = 'none';
-  document.getElementById('scanForm').style.display = 'block';
-  document.getElementById('btnConfirm').disabled = false;
-  if (msg) {
-    document.getElementById('rawOcr').textContent = msg;
-    document.getElementById('rawOcr').style.display = 'block';
+// ══════════════════════════════
+// OCR.SPACE — Auto extract details
+// ══════════════════════════════
+async function runOCRSpace() {
+  document.getElementById('scanLoader').style.display = 'flex';
+  document.getElementById('scanForm').style.display = 'none';
+  document.getElementById('btnConfirm').disabled = true;
+  document.getElementById('scanMsg').textContent = '🔍 Reading Voter ID card...';
+
+  try {
+    // Convert base64 image to blob
+    const base64 = state.image.split(',')[1];
+    const mimeType = state.image.split(';')[0].split(':')[1];
+    const byteChars = atob(base64);
+    const byteArr = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) {
+      byteArr[i] = byteChars.charCodeAt(i);
+    }
+    const blob = new Blob([byteArr], { type: mimeType });
+
+    // Build form data for OCR.space
+    const formData = new FormData();
+    formData.append('file', blob, 'voter-id.jpg');
+    formData.append('apikey', OCR_API_KEY);
+    formData.append('language', 'eng');
+    formData.append('isOverlayRequired', 'false');
+    formData.append('detectOrientation', 'true');
+    formData.append('scale', 'true');
+    formData.append('OCREngine', '2'); // Engine 2 is better for IDs
+
+    document.getElementById('scanMsg').textContent = '📡 Sending to OCR engine...';
+
+    const res = await fetch('https://api.ocr.space/parse/image', {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await res.json();
+
+    if (data.IsErroredOnProcessing) {
+      throw new Error(data.ErrorMessage || 'OCR failed');
+    }
+
+    const rawText = data.ParsedResults?.[0]?.ParsedText || '';
+    console.log('OCR Raw Text:', rawText);
+
+    document.getElementById('rawOcr').textContent = rawText;
+
+    // Parse the extracted text
+    const parsed = parseVoterIDText(rawText);
+
+    // Auto-fill fields
+    document.getElementById('fName').value = parsed.name;
+    document.getElementById('fId').value = parsed.id;
+    document.getElementById('fBooth').value = '';
+
+    document.getElementById('scanLoader').style.display = 'none';
+    document.getElementById('scanForm').style.display = 'block';
+    document.getElementById('btnConfirm').disabled = false;
+
+    // Show status
+    if (parsed.name || parsed.id) {
+      document.getElementById('rawOcr').style.display = 'block';
+    }
+
+  } catch (err) {
+    console.error('OCR error:', err);
+    document.getElementById('scanMsg').textContent = '⚠️ OCR failed. Fill manually.';
+    document.getElementById('scanLoader').style.display = 'none';
+    document.getElementById('scanForm').style.display = 'block';
+    document.getElementById('btnConfirm').disabled = false;
   }
 }
 
 // ══════════════════════════════
-// PARSE QR DATA
+// PARSE VOTER ID TEXT
 // ══════════════════════════════
-function parseAndFill(rawData) {
-  console.log('QR Data:', rawData);
+function parseVoterIDText(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   let name = '', id = '';
 
-  try {
-    // Try JSON
-    const json = JSON.parse(rawData);
-    name = json.name || json.Name || json.voter_name || json.nm || '';
-    id = json.epic_no || json.voter_id || json.EPIC || json.id || '';
-  } catch (e) {
-    // Parse as text
-    const lines = rawData.split(/[\n,|;\/]/).map(l => l.trim()).filter(Boolean);
+  // ── Find EPIC ID (3 capital letters + 7 digits) ──
+  const epicMatch = text.match(/[A-Z]{3}[0-9]{7}/);
+  if (epicMatch) id = epicMatch[0];
 
-    // Find EPIC ID: 3 capital letters + 7 digits
-    const epicMatch = rawData.match(/[A-Z]{3}[0-9]{7}/);
-    if (epicMatch) id = epicMatch[0];
-
-    // Find name from lines
-    for (let i = 0; i < lines.length; i++) {
-      const low = lines[i].toLowerCase();
-      if ((low.includes('name') || low.includes('nm')) && lines[i + 1]) {
-        const c = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
-        if (c.length > 2) { name = c; break; }
+  // ── Find Name ──
+  // Method 1: Line after "Name" keyword
+  for (let i = 0; i < lines.length; i++) {
+    const low = lines[i].toLowerCase();
+    if (low === 'name' || low.includes('name :') || low.includes('name:')) {
+      // Name is on same line after colon
+      const colonPart = lines[i].split(':')[1];
+      if (colonPart && colonPart.trim().length > 2) {
+        name = colonPart.trim();
+        break;
+      }
+      // Name is on next line
+      if (lines[i + 1]) {
+        const candidate = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
+        if (candidate.length > 2) { name = candidate; break; }
       }
     }
 
-    // Fallback: ALL CAPS line
-    if (!name) {
-      const caps = lines.filter(l => /^[A-Z][A-Z\s]{3,30}$/.test(l));
-      if (caps.length) name = caps[0];
+    // "Elector's Name" pattern
+    if (low.includes("elector") && low.includes("name")) {
+      const colonPart = lines[i].split(':')[1];
+      if (colonPart && colonPart.trim().length > 2) {
+        name = colonPart.trim();
+        break;
+      }
+      if (lines[i + 1]) {
+        const candidate = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
+        if (candidate.length > 2) { name = candidate; break; }
+      }
     }
   }
 
-  document.getElementById('fName').value = name || '';
-  document.getElementById('fId').value = id || '';
-  document.getElementById('fBooth').value = '';
-  document.getElementById('rawOcr').textContent = 'QR Raw Data:\n' + rawData;
+  // Method 2: ALL CAPS lines (Indian Voter IDs print name in caps)
+  if (!name) {
+    const capsLines = lines.filter(l =>
+      /^[A-Z][A-Z\s\.]{3,40}$/.test(l) &&
+      !l.includes('INDIA') &&
+      !l.includes('ELECTION') &&
+      !l.includes('COMMISSION') &&
+      !l.includes('VOTER') &&
+      !l.includes('IDENTITY') &&
+      !l.includes('CARD')
+    );
+    if (capsLines.length > 0) {
+      // Pick the most likely name line
+      name = capsLines.sort((a, b) => b.length - a.length)[0];
+    }
+  }
+
+  // Method 3: Look for name after S/O, D/O, W/O (father/mother name pattern)
+  if (!name) {
+    for (let i = 0; i < lines.length; i++) {
+      const low = lines[i].toLowerCase();
+      if (low.includes('s/o') || low.includes('d/o') || low.includes('w/o') || low.includes('c/o')) {
+        // Name is usually the line before
+        if (i > 0) {
+          const candidate = lines[i - 1].replace(/[^a-zA-Z\s]/g, '').trim();
+          if (candidate.length > 2 && !candidate.toLowerCase().includes('name')) {
+            name = candidate;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    name: name.trim(),
+    id: id.trim()
+  };
 }
 
 // ══════════════════════════════
