@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>EVote Bridge</title>
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
-  
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -59,7 +58,7 @@
   </div>
 </div>
 
-<!-- APP (hidden until login) -->
+<!-- APP -->
 <div id="APP" style="display:none">
 
   <header id="topbar">
@@ -84,7 +83,7 @@
   <main class="main-area">
 
     <!-- Panel 1: Setup -->
-    <div class="panel active" id="P1">
+    <div class="panel" id="P1" style="display:block">
       <div class="ptag">STEP 01</div>
       <h2>Booth Setup</h2>
       <p class="psub">Configure this booth before starting verification.</p>
@@ -108,8 +107,8 @@
       <p class="psub">Use camera or upload the voter's ID card.</p>
 
       <div class="tabs">
-        <button class="tab active" id="tabCamBtn" onclick="switchTab(event,'cam')">📷 Camera</button>
-        <button class="tab" id="tabUplBtn" onclick="switchTab(event,'upl')">📁 Upload</button>
+        <button class="tab active" onclick="switchTab(event,'cam')">📷 Camera</button>
+        <button class="tab" onclick="switchTab(event,'upl')">📁 Upload</button>
       </div>
 
       <div id="tabCam">
@@ -118,7 +117,6 @@
           <div class="camcover" id="camCover">
             <div class="scan-box"></div>
             <p>Tap Start Camera</p>
-            <div id="qrStatus" style="font-family:var(--mono);font-size:0.72rem;color:#3b82f6;margin-top:0.5rem"></div>
           </div>
         </div>
         <div class="cam-btns">
@@ -149,11 +147,11 @@
       </div>
     </div>
 
-    <!-- Panel 3: Scan -->
+    <!-- Panel 3: Scan & Review -->
     <div class="panel" id="P3" style="display:none">
       <div class="ptag">STEP 03</div>
       <h2>Scan & Review</h2>
-      <p class="psub">OCR reading the Voter ID. Correct details if needed.</p>
+      <p class="psub">OCR reading the Voter ID. Verify and correct if needed.</p>
 
       <div id="scanLoader" style="display:flex;flex-direction:column;align-items:center;padding:3rem 0;gap:1rem">
         <div class="spinner"></div>
@@ -161,22 +159,43 @@
       </div>
 
       <div id="scanForm" style="display:none">
+
+        <!-- Auto-filled fields -->
         <div class="row2">
           <div class="field">
             <label>VOTER NAME <span class="tag-a">AUTO</span></label>
             <input id="fName" type="text" placeholder="Full name"/>
           </div>
           <div class="field">
-            <label>VOTER ID NO. <span class="tag-a">AUTO</span></label>
+            <label>EPIC NO. <span class="tag-a">AUTO</span></label>
             <input id="fId" type="text" placeholder="e.g. ABC1234567"/>
           </div>
         </div>
-        <div class="field">
-          <label>HOME BOOTH ID <span class="tag-m">MANUAL</span></label>
-          <input id="fBooth" type="text" placeholder="e.g. TN-CHN-007"/>
+
+        <div class="row2">
+          <div class="field">
+            <label>FATHER / MOTHER NAME <span class="tag-a">AUTO</span></label>
+            <input id="fFather" type="text" placeholder="Parent name"/>
+          </div>
+          <div class="field">
+            <label>DATE OF BIRTH <span class="tag-a">AUTO</span></label>
+            <input id="fDob" type="text" placeholder="DD/MM/YYYY"/>
+          </div>
         </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>GENDER <span class="tag-a">AUTO</span></label>
+            <input id="fGender" type="text" placeholder="Male / Female / Other"/>
+          </div>
+          <div class="field">
+            <label>HOME BOOTH ID <span class="tag-m">MANUAL</span></label>
+            <input id="fBooth" type="text" placeholder="e.g. TN-CHN-007"/>
+          </div>
+        </div>
+
         <button class="btn-link" onclick="toggleRaw()">▼ Show raw OCR text</button>
-        <pre id="rawOcr" style="display:none;margin-top:0.5rem;padding:0.75rem;background:#0d1117;border:1px solid #1f2937;border-radius:6px;font-size:0.72rem;color:#6b7280;white-space:pre-wrap;word-break:break-all;max-height:130px;overflow-y:auto"></pre>
+        <pre id="rawOcr" style="display:none;margin-top:0.5rem;padding:0.75rem;background:#0d1117;border:1px solid #1f2937;border-radius:6px;font-size:0.72rem;color:#6b7280;white-space:pre-wrap;word-break:break-all;max-height:150px;overflow-y:auto"></pre>
       </div>
 
       <div class="btn-row">
@@ -190,13 +209,10 @@
       <div class="ptag">STEP 04</div>
       <h2>Confirm & Send</h2>
       <p class="psub">Review all details before sending to home booth.</p>
-
       <div class="confirm-grid" id="confirmGrid"></div>
-
       <div class="email-note">
         📧 Notification will be sent to: <strong id="emailDest">25205012@nec.edu.in</strong>
       </div>
-
       <div class="btn-row">
         <button class="btn-ghost" onclick="goP(3)">← Edit</button>
         <button class="btn-primary" id="btnSendData" onclick="sendData()">
