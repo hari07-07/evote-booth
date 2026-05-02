@@ -1,14 +1,13 @@
-/* EVote Bridge — OCR.space Auto-fill + QR Fallback */
+/* EVote Bridge — Complete App with Internal OCR */
 
 const ADMIN = { user: 'admin', pass: 'admin123' };
 const RECEIVER = '25205012@nec.edu.in';
-const OCR_API_KEY = '3ef639928088957';
 
 let state = {
   boothId: '', officerName: '',
   stream: null, image: null,
   voterName: '', voterId: '', homeBooth: '',
-  timerInt: null, qrScanInterval: null
+  timerInt: null
 };
 
 // Clock
@@ -24,6 +23,7 @@ function showLogin() {
   document.getElementById('APP').style.display = 'none';
   document.getElementById('LOGIN').style.display = 'flex';
 }
+
 function showApp() {
   document.getElementById('LOGIN').style.display = 'none';
   document.getElementById('APP').style.display = 'flex';
@@ -148,7 +148,7 @@ function logout() {
   if (!confirm('Logout and end this session?')) return;
   stopCam();
   clearInterval(state.timerInt);
-  state = { boothId: '', officerName: '', stream: null, image: null, voterName: '', voterId: '', homeBooth: '', timerInt: null, qrScanInterval: null };
+  state = { boothId: '', officerName: '', stream: null, image: null, voterName: '', voterId: '', homeBooth: '', timerInt: null };
   document.getElementById('iUser').value = '';
   document.getElementById('iPass').value = '';
   document.getElementById('iOtp').value = '';
@@ -187,7 +187,7 @@ function goP(n) {
 }
 
 // ══════════════════════════════
-// STEP 1
+// STEP 1: Booth Setup
 // ══════════════════════════════
 function startBooth() {
   const bid = document.getElementById('boothId').value.trim();
@@ -224,7 +224,6 @@ async function startCam() {
     await vid.play();
     document.getElementById('camCover').style.display = 'none';
     document.getElementById('btnCapture').disabled = false;
-    setQRStatus('📷 Position Voter ID card in frame, then tap Capture', '#3b82f6');
   } catch (err) {
     if (err.name === 'NotAllowedError') {
       alert('Camera permission denied!\n\nAllow camera in browser settings and refresh.');
@@ -235,7 +234,6 @@ async function startCam() {
 }
 
 function stopCam() {
-  stopLiveQR();
   if (state.stream) {
     state.stream.getTracks().forEach(t => t.stop());
     state.stream = null;
@@ -245,19 +243,6 @@ function stopCam() {
   }
 }
 
-function setQRStatus(msg, color) {
-  const el = document.getElementById('qrStatus');
-  if (el) { el.textContent = msg; el.style.color = color || '#3b82f6'; }
-}
-
-function stopLiveQR() {
-  if (state.qrScanInterval) {
-    clearInterval(state.qrScanInterval);
-    state.qrScanInterval = null;
-  }
-}
-
-// ── Manual Capture ──
 function takePhoto() {
   const vid = document.getElementById('vid');
   const canvas = document.getElementById('snapCanvas');
@@ -273,7 +258,6 @@ function takePhoto() {
   stopCam();
 }
 
-// ── Upload ──
 function fileChosen(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -303,172 +287,77 @@ function retake() {
 function goScan() {
   if (!state.image) { alert('Please capture or upload the Voter ID first.'); return; }
   goP(3);
-  runOCRSpace();
+  runOCR();
 }
 
 // ══════════════════════════════
-// OCR.SPACE — Auto extract details
+// STEP 3: OCR — Internal API
 // ══════════════════════════════
-async function runOCRSpace() {
+async function runOCR() {
   document.getElementById('scanLoader').style.display = 'flex';
   document.getElementById('scanForm').style.display = 'none';
   document.getElementById('btnConfirm').disabled = true;
-  document.getElementById('scanMsg').textContent = '🔍 Reading Voter ID...';
+  document.getElementById('scanMsg').textContent = '🔍 Reading Voter ID card...';
 
   try {
-    // Compress image first
-    const compressed = await compressImage(state.image);
+    document.getElementById('scanMsg').textContent = '📡 Extracting text with OCR...';
 
-    const formData = new FormData();
-    formData.append('base64Image', compressed);
-    formData.append('apikey', OCR_API_KEY);
-    formData.append('language', 'eng');
-    formData.append('isOverlayRequired', 'false');
-    formData.append('detectOrientation', 'true');
-    formData.append('scale', 'true');
-    formData.append('OCREngine', '2');
-
-    document.getElementById('scanMsg').textContent = '📡 Extracting text...';
-
-    const res = await fetch('https://api.ocr.space/parse/image', {
+    // Send image to our own backend API
+    const res = await fetch('/api/extract-voter-id', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: state.image })
     });
 
     const data = await res.json();
-    console.log('OCR Response:', JSON.stringify(data));
 
-    const rawText = data?.ParsedResults?.[0]?.ParsedText || '';
+    if (!data.success) throw new Error(data.error || 'OCR failed');
 
-    if (!rawText) {
-      throw new Error('No text extracted. Try better lighting.');
-    }
-
-    document.getElementById('rawOcr').textContent = rawText;
-    document.getElementById('rawOcr').style.display = 'block';
-
-    const parsed = parseVoterIDText(rawText);
-    document.getElementById('fName').value = parsed.name;
-    document.getElementById('fId').value = parsed.id;
+    // Auto-fill fields from OCR result
+    document.getElementById('fName').value = data.data.name || '';
+    document.getElementById('fId').value = data.data.epic_number || '';
+    document.getElementById('fFather').value = data.data.father_name || '';
+    document.getElementById('fDob').value = data.data.dob || '';
+    document.getElementById('fGender').value = data.data.gender || '';
     document.getElementById('fBooth').value = '';
+
+    // Show confidence indicators
+    showConfidence(data.confidence);
+
+    // Show raw OCR text
+    document.getElementById('rawOcr').textContent =
+      `OCR Confidence: ${data.ocr_confidence}%\n\n${data.raw_text}`;
 
     document.getElementById('scanLoader').style.display = 'none';
     document.getElementById('scanForm').style.display = 'block';
     document.getElementById('btnConfirm').disabled = false;
 
   } catch (err) {
-    console.error('OCR Error:', err);
-    document.getElementById('scanMsg').textContent = '⚠️ ' + err.message;
+    console.error('OCR error:', err);
+    document.getElementById('scanMsg').textContent = '⚠️ ' + err.message + ' — Fill manually.';
     document.getElementById('scanLoader').style.display = 'none';
     document.getElementById('scanForm').style.display = 'block';
     document.getElementById('btnConfirm').disabled = false;
   }
 }
 
-// Compress image before sending
-function compressImage(dataURL) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const MAX = 1000;
-      let w = img.width, h = img.height;
-      if (w > MAX) { h = h * MAX / w; w = MAX; }
-      canvas.width = w;
-      canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
-    };
-    img.src = dataURL;
+// Show confidence color indicators
+function showConfidence(conf) {
+  const fields = { fName: 'name', fId: 'epic_number', fFather: 'father_name', fDob: 'dob', fGender: 'gender' };
+  Object.entries(fields).forEach(([inputId, key]) => {
+    const input = document.getElementById(inputId);
+    const score = conf[key] || 0;
+    if (!input) return;
+    if (score >= 85) {
+      input.style.borderColor = '#10b981'; // green - high confidence
+    } else if (score >= 60) {
+      input.style.borderColor = '#f59e0b'; // yellow - medium
+    } else if (score > 0) {
+      input.style.borderColor = '#ef4444'; // red - low confidence
+    }
   });
 }
 
-// ══════════════════════════════
-// PARSE VOTER ID TEXT
-// ══════════════════════════════
-function parseVoterIDText(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  let name = '', id = '';
-
-  // ── Find EPIC ID (3 capital letters + 7 digits) ──
-  const epicMatch = text.match(/[A-Z]{3}[0-9]{7}/);
-  if (epicMatch) id = epicMatch[0];
-
-  // ── Find Name ──
-  // Method 1: Line after "Name" keyword
-  for (let i = 0; i < lines.length; i++) {
-    const low = lines[i].toLowerCase();
-    if (low === 'name' || low.includes('name :') || low.includes('name:')) {
-      // Name is on same line after colon
-      const colonPart = lines[i].split(':')[1];
-      if (colonPart && colonPart.trim().length > 2) {
-        name = colonPart.trim();
-        break;
-      }
-      // Name is on next line
-      if (lines[i + 1]) {
-        const candidate = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
-        if (candidate.length > 2) { name = candidate; break; }
-      }
-    }
-
-    // "Elector's Name" pattern
-    if (low.includes("elector") && low.includes("name")) {
-      const colonPart = lines[i].split(':')[1];
-      if (colonPart && colonPart.trim().length > 2) {
-        name = colonPart.trim();
-        break;
-      }
-      if (lines[i + 1]) {
-        const candidate = lines[i + 1].replace(/[^a-zA-Z\s]/g, '').trim();
-        if (candidate.length > 2) { name = candidate; break; }
-      }
-    }
-  }
-
-  // Method 2: ALL CAPS lines (Indian Voter IDs print name in caps)
-  if (!name) {
-    const capsLines = lines.filter(l =>
-      /^[A-Z][A-Z\s\.]{3,40}$/.test(l) &&
-      !l.includes('INDIA') &&
-      !l.includes('ELECTION') &&
-      !l.includes('COMMISSION') &&
-      !l.includes('VOTER') &&
-      !l.includes('IDENTITY') &&
-      !l.includes('CARD')
-    );
-    if (capsLines.length > 0) {
-      // Pick the most likely name line
-      name = capsLines.sort((a, b) => b.length - a.length)[0];
-    }
-  }
-
-  // Method 3: Look for name after S/O, D/O, W/O (father/mother name pattern)
-  if (!name) {
-    for (let i = 0; i < lines.length; i++) {
-      const low = lines[i].toLowerCase();
-      if (low.includes('s/o') || low.includes('d/o') || low.includes('w/o') || low.includes('c/o')) {
-        // Name is usually the line before
-        if (i > 0) {
-          const candidate = lines[i - 1].replace(/[^a-zA-Z\s]/g, '').trim();
-          if (candidate.length > 2 && !candidate.toLowerCase().includes('name')) {
-            name = candidate;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  return {
-    name: name.trim(),
-    id: id.trim()
-  };
-}
-
-// ══════════════════════════════
-// STEP 3
-// ══════════════════════════════
 function toggleRaw() {
   const el = document.getElementById('rawOcr');
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -478,7 +367,7 @@ function goConfirm() {
   const name = document.getElementById('fName').value.trim();
   const id = document.getElementById('fId').value.trim();
   const booth = document.getElementById('fBooth').value.trim();
-  if (!name || !id || !booth) { alert('Please fill in all three fields.'); return; }
+  if (!name || !id || !booth) { alert('Please fill Name, Voter ID and Home Booth ID.'); return; }
   state.voterName = name;
   state.voterId = id;
   state.homeBooth = booth;
@@ -487,7 +376,7 @@ function goConfirm() {
 }
 
 // ══════════════════════════════
-// STEP 4
+// STEP 4: Confirm & Send
 // ══════════════════════════════
 function buildConfirm() {
   const ts = new Date().toLocaleString('en-IN', { hour12: true, timeZone: 'Asia/Kolkata' });
@@ -537,7 +426,7 @@ async function sendData() {
 }
 
 // ══════════════════════════════
-// STEP 5
+// STEP 5: Success
 // ══════════════════════════════
 function showSuccess() {
   document.getElementById('sumBox').innerHTML = `
@@ -561,9 +450,10 @@ function nextVoter() {
   document.getElementById('previewBox').style.display = 'none';
   document.getElementById('tabCam').style.display = 'block';
   document.getElementById('tabUpl').style.display = 'none';
-  document.getElementById('fName').value = '';
-  document.getElementById('fId').value = '';
-  document.getElementById('fBooth').value = '';
+  ['fName','fId','fFather','fDob','fGender','fBooth'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.style.borderColor = ''; }
+  });
   document.getElementById('rawOcr').textContent = '';
   document.getElementById('rawOcr').style.display = 'none';
   document.getElementById('scanForm').style.display = 'none';
